@@ -9,6 +9,7 @@ from .serializers import UserRegistrationSerializer, UserProfileSerializer
 from .models import UserProfile
 from rest_framework import viewsets
 from django.shortcuts import get_object_or_404
+from users.permissions import IsOwnerOrReadOnly
 
 
 class UserRegistrationView(generics.CreateAPIView):
@@ -80,9 +81,9 @@ class UserProfileViewSet(viewsets.ModelViewSet):
     Allows viewing all profiles, as well as updating/deleting only your own profile.
     """
 
-    queryset = User.objects.all()
+    queryset = UserProfile.objects.all().select_related("user")
     serializer_class = UserProfileSerializer
-    permission_classes = (IsAuthenticated,)
+    permission_classes = [IsAuthenticated, IsOwnerOrReadOnly]
 
     def get_queryset(self):
         """
@@ -90,44 +91,16 @@ class UserProfileViewSet(viewsets.ModelViewSet):
         as well as the profiles of other users.
         """
         if self.request.user.is_staff and self.request.user.is_superuser:
-            return User.objects.all()
-        return User.objects.all()
+            return super().get_queryset()
+        return UserProfile.objects.filter(user=self.request.user).select_related("user")
 
-    def retrieve(self, request, *args, **kwargs):
-        """
-        Retrieving a profile by ID or username.
-        """
-        lookup_value = self.kwargs.get("lookup_field")
-        if lookup_value.isdigit():
-            obj = get_object_or_404(UserProfile, pk=lookup_value)
-        else:
-            obj = get_object_or_404(User, user__username=lookup_value)
-        serializer = self.get_serializer(obj)
-        return Response(serializer.data)
-
-    def update(self, request, *args, **kwargs):
-        """
-        Allows the user to update only their profile.
-        """
-        instance = self.get_object()
-        if instance.user != request.user:
-            return Response(
-                {"detail": "You do not have permission to edit this profile."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-        return super().update(request, *args, **kwargs)
-
-    def partial_update(self, request, *args, **kwargs):
-        """
-        Allows the user to partially update only their profile.
-        """
-        partial = self.get_object()
-        if partial.user != request.user:
-            return Response(
-                {"detail": "You do not have permission to edit this profile."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-        return super().partial_update(request, *args, **kwargs)
+    def get_object(self):
+        """Search by user__username or pk."""
+        lookup_url_kwarg = self.lookup_url_kwarg or self.lookup_field
+        filter_kwargs = {self.lookup_field: self.kwargs[lookup_url_kwarg]}
+        obj = get_object_or_404(self.queryset, **filter_kwargs)
+        self.check_object_permissions(self.request, obj)
+        return obj
 
     def destroy(self, request, *args, **kwargs):
         """
@@ -136,6 +109,8 @@ class UserProfileViewSet(viewsets.ModelViewSet):
         or through deactivation, not deletion of the profile.
         """
         return Response(
-            {"detail": "Deleting a user must be a separate administrative function."},
+            {
+                "detail": "Deletion of user profiles is not allowed via this API endpoint."
+            },
             status=status.HTTP_405_METHOD_NOT_ALLOWED,
         )
