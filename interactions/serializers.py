@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from rest_framework.authtoken.admin import User
 
-from interactions.models import Follow
+from interactions.models import Follow, Like
 
 
 class SimpleUserSerializer(serializers.ModelSerializer):
@@ -45,3 +45,20 @@ class FollowSerializer(serializers.ModelSerializer):
 
         if current_follower == target_following:
             raise serializers.ValidationError("You cannot follow yourself.")
+
+
+class LikeSerializer(serializers.ModelSerializer):
+    user_username = serializers.CharField(source="user.username", read_only=True)
+    post_content = serializers.CharField(source="post.content", read_only=True)
+
+    class Meta:
+        model = Like
+        fields = [
+            "id",
+            "user",
+            "user_username",
+            "post",
+            "post_content",
+            "like_at",
+        ]
+        read_only_fields = ["user", "like_at"]
