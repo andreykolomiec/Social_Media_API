@@ -1,3 +1,6 @@
+from django.http import Http404
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiExample
 from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -75,6 +78,11 @@ class LogoutView(APIView):
             )
 
 
+@extend_schema(
+    description="API endpoint for managing user profiles.",
+    summary="User Profile Management",
+    tags=["User Management"],
+)
 class UserProfileViewSet(viewsets.ModelViewSet):
     """
     ViewSet for CRUD operations with user profiles.
@@ -92,15 +100,36 @@ class UserProfileViewSet(viewsets.ModelViewSet):
         """
         if self.request.user.is_staff and self.request.user.is_superuser:
             return super().get_queryset()
-        return UserProfile.objects.filter(user=self.request.user).select_related("user")
+
+        if self.action == "list":
+            return UserProfile.objects.filter(user=self.request.user).select_related(
+                "user"
+            )
+        return super().get_queryset()
 
     def get_object(self):
         """Search by user__username or pk."""
-        lookup_url_kwarg = self.lookup_url_kwarg or self.lookup_field
-        filter_kwargs = {self.lookup_field: self.kwargs[lookup_url_kwarg]}
-        obj = get_object_or_404(self.queryset, **filter_kwargs)
+        lookup_value = self.kwargs.get("pk")
+
+        if not lookup_value:
+            raise Http404("Lookup value not provided in URL.")
+
+        try:
+            if lookup_value.isdigit():
+                obj = get_object_or_404(UserProfile, pk=lookup_value)
+            else:
+                obj = get_object_or_404(UserProfile, user__username=lookup_value)
+
+        except UserProfile.DoesNotExist:
+            raise Http404("User profile not found.")
+
         self.check_object_permissions(self.request, obj)
         return obj
+
+        # filter_kwargs = {self.lookup_field: self.kwargs[lookup_url_kwarg]}
+        # obj = get_object_or_404(self.queryset, **filter_kwargs)
+        # self.check_object_permissions(self.request, obj)
+        # return obj
 
     def destroy(self, request, *args, **kwargs):
         """
@@ -108,6 +137,53 @@ class UserProfileViewSet(viewsets.ModelViewSet):
         Deleting a user must be a separate administrative function,
         or through deactivation, not deletion of the profile.
         """
+        return Response(
+            {
+                "detail": "Deletion of user profiles is not allowed via this API endpoint."
+            },
+            status=status.HTTP_405_METHOD_NOT_ALLOWED,
+        )
+
+    @extend_schema(
+        description="Retrieve a single user profile by ID or username.",
+        parameters=[
+            OpenApiParameter(
+                name="pk",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.PATH,
+                description="The ID or username of the user profile.",
+            )
+        ],
+        examples=[
+            OpenApiExample(
+                "Retrieve by ID",
+                value="/api/users/profile/1/",
+                description="Retrieve user profile with ID 1.",
+                request_only=True,
+            ),
+            OpenApiExample(
+                "Retrieve by username",
+                value="/api/users/profile/john_doe/",
+                description='Retrieve user profile with username "john_doe".',
+                request_only=True,
+            ),
+        ],
+    )
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
+    @extend_schema(
+        summary="Delete a user profile (Forbidden)",
+        description="Deleting a user profile via this API endpoint is forbidden.",
+        responses={
+            200: None,
+            405: {
+                "description": "Method Not Allowed - Deletion of user profiles is not allowed via this API endpoint."
+            },
+        },
+        deprecated=True,
+    )
+    def destroy(self, request, *args, **kwargs):
         return Response(
             {
                 "detail": "Deletion of user profiles is not allowed via this API endpoint."
