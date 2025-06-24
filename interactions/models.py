@@ -75,4 +75,4 @@ class Comment(models.Model):
         ]
 
     def __str__(self):
-        return f"Comment by {self.user.username} on Post {self.post}"
+        return f"Comment by {self.user.username} on Post {self.post.id}"
