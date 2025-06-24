@@ -7,12 +7,13 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 
-from interactions.models import Follow, Like
+from interactions.models import Follow, Like, Comment
 from posts.models import Post
 from interactions.serializers import (
     FollowSerializer,
     SimpleUserSerializer,
     LikeSerializer,
+    CommentSerializer,
 )
 from users.permissions import IsOwnerOrReadOnly
 
@@ -192,7 +193,7 @@ class LikeViewSet(viewsets.ModelViewSet):
                 ],
             ),
             OpenApiParameter(
-                name="my_like",  # Ви використовуєте 'my_like'
+                name="my_like",
                 type=OpenApiTypes.BOOL,
                 location=OpenApiParameter.QUERY,
                 description="If 'true', only show likes made by the current authenticated user.",
@@ -222,7 +223,7 @@ class LikeViewSet(viewsets.ModelViewSet):
                 queryset = queryset.filter(post__id=post_id)
 
             except ValueError:
-                raise ValidationError({"post_id": "Mast by a valid integer"})
+                raise ValidationError({"post_id": "Must be a valid integer"})
 
         my_like = self.request.query_params.get("my_like")
         if my_like == "true":
@@ -258,13 +259,19 @@ class LikeViewSet(viewsets.ModelViewSet):
                 request_only=True,
                 media_type="application/json",
             ),
+            OpenApiExample(
+                "Like Post with ID 5",
+                value={"post": 5},
+                request_only=True,
+                media_type="application/json",
+            ),
         ],
     )
     def create(self, request, *args, **kwargs):
         post_id = request.data.get("post")
         if not post_id:
             return Response(
-                {"detail": "Post ID is required"}, status=status.HTTP_400_BAD_REQUEST
+                {"detail": "Post ID is required."}, status=status.HTTP_400_BAD_REQUEST
             )
 
         try:
@@ -301,7 +308,180 @@ class LikeViewSet(viewsets.ModelViewSet):
             404: {"description": "Like not found."},
         },
     )
-    def unlike(self, request, *args, **kwargs):
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        self.perform_destroy(instance)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@extend_schema(
+    description="API endpoint for managing comments on post. Allows authenticated users to create, retrieve, update, and delete comments. ",
+    summary="Comment Management",
+    tags=["Interactions - Comments"],
+)
+class CommentViewSet(viewsets.ModelViewSet):
+    queryset = Comment.objects.all().select_related("user", "post")
+    serializer_class = CommentSerializer
+    permission_classes = (IsAuthenticated,)
+
+    def get_permissions(self):
+        """
+        Set permissions for different actions.
+        Only authenticated users can list, retrieve, create comments.
+        Only the author of the comment can update or delete it.
+        """
+        if self.action in ["update", "partial_update", "destroy"]:
+            return [IsAuthenticated(), IsOwnerOrReadOnly()]
+        return [IsAuthenticated()]
+
+    @extend_schema(
+        summary="List comments with optional filters",
+        description="Retrieves a list of comments. Can be filtered by `post_id` to show comments for a specific post, or `my_comments=true` to show only comments made by the current authenticated user.",
+        parameters=[
+            OpenApiParameter(
+                name="post_id",
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description="Filter comments by a specific post ID.",
+                required=False,
+                examples=[
+                    OpenApiExample(
+                        "Comments for Post 10", value="10", media_type="text/plain"
+                    ),
+                ],
+            ),
+            OpenApiParameter(
+                name="my_comments",
+                type=OpenApiTypes.BOOL,
+                location=OpenApiParameter.QUERY,
+                description="If 'true', only show comments made by the current authenticated user.",
+                required=False,
+                examples=[
+                    OpenApiExample(
+                        "My own comments", value="true", media_type="text/plain"
+                    ),
+                ],
+            ),
+        ],
+        responses={
+            200: CommentSerializer(many=True),
+            401: {"description": "Authentication credentials were not provided."},
+        },
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+
+        post_id = self.request.query_params.get("post_id")
+        if post_id:
+            try:
+                int(post_id)
+                queryset = queryset.filter(post__id=post_id)
+
+            except ValueError:
+                raise ValidationError({"post_id": "Mast by a valid integer"})
+
+        my_comments = self.request.query_params.get("my_like")
+        if my_comments == "true":
+            queryset = queryset.filter(user=self.request.user)
+
+        return queryset
+
+    @extend_schema(
+        summary="Retrieve a single comment",
+        description="Retrieves details of a specific like by its ID. Any authenticated user can retrieve it.",
+        responses={
+            200: CommentSerializer,
+            401: {"description": "Authentication credentials were not provided."},
+            404: {"description": "Comment not found."},
+        },
+    )
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
+    @extend_schema(
+        summary="Create a new comment for a post",
+        description="Allows an authenticated user to add comment a post.The 'user' field is automatically set to the current authenticated user.",
+        request=CommentSerializer,
+        responses={
+            201: CommentSerializer,
+            400: {
+                "description": "Invalid data ( post does not exist, or content is empty)."
+            },
+            401: {"description": "Authentication credentials were not provided."},
+            404: {"description": "Post not found."},
+        },
+        examples=[
+            OpenApiExample(
+                "Comment on Post with ID 10",
+                value={"post": 10, "comment": "This is a great post!"},
+                request_only=True,
+                media_type="application/json",
+            ),
+        ],
+    )
+    def create(self, request, *args, **kwargs):
+        post_id = request.data.get("post")
+        content = request.data.get("content")
+        if not post_id:
+            raise ValidationError({"post": "Post ID is required."})
+        if not content:
+            raise ValidationError({"content": "Comment content cannot be empty."})
+
+        try:
+            post = Post.objects.get(pk=post_id)
+        except Post.DoesNotExists:
+            return Response(
+                {"detail": "Post not found"}, status=status.HTTP_404_NOT_FOUND
+            )
+        if Comment.objects.filter(user=request.user, post=post).exists():
+            return Response(
+                {"detail": "You have already commented on this post."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        serializer = self.get_serializer(data={"post": post_id, "content": content})
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(
+            serializer.data, status=status.HTTP_201_CREATED, headers=headers
+        )
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+    @extend_schema(
+        summary="Update a comment",
+        description="Allows the author of the comment to fully update (PUT) or partially update (PATCH) their comment.",
+        request=CommentSerializer,
+        responses={
+            200: CommentSerializer,
+            400: {"description": "Invalid data provided."},
+            401: {"description": "Authentication credentials were not provided."},
+            403: {"description": "Permission denied (not the author)."},
+            404: {"description": "Comment not found."},
+        },
+    )
+    def update(self, request, *args, **kwargs):
+        return super().update(request, *args, **kwargs)
+
+    @extend_schema(exclude=True)
+    def partial_update(self, request, *args, **kwargs):
+        return super().partial_update(request, *args, **kwargs)
+
+    @extend_schema(
+        summary="Delete a comment",
+        description="Allows the author of the comment to delete their comment.",
+        responses={
+            204: {"description": "Comment successfully deleted."},
+            401: {"description": "Authentication credentials were not provided."},
+            403: {"description": "Permission denied (not the author)."},
+            404: {"description": "Comment not found."},
+        },
+    )
+    def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
         self.perform_destroy(instance)
         return Response(status=status.HTTP_204_NO_CONTENT)
