@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from rest_framework.authtoken.admin import User
 
-from interactions.models import Follow, Like
+from interactions.models import Follow, Like, Comment
 
 
 class SimpleUserSerializer(serializers.ModelSerializer):
@@ -62,3 +62,24 @@ class LikeSerializer(serializers.ModelSerializer):
             "like_at",
         ]
         read_only_fields = ["user", "like_at"]
+
+
+class CommentSerializer(serializers.ModelSerializer):
+    user_username = serializers.CharField(source="user.username", read_only=True)
+    post_content = serializers.CharField(source="post.content", read_only=True)
+
+    class Meta:
+        model = Comment
+        fields = [
+            "id",
+            "user",
+            "user_username",
+            "post",
+            "post_content",
+            "content",
+            "comment_at",
+        ]
+        read_only_fields = ["user", "user_username", "post_content", "comment_at"]
+        extra_kwargs = {
+            "post": {"write_only": True},
+        }
