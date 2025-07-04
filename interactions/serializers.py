@@ -1,7 +1,10 @@
 from rest_framework import serializers
-from rest_framework.authtoken.admin import User
+from django.contrib.auth import get_user_model
 
 from interactions.models import Follow, Like, Comment
+
+
+User = get_user_model()
 
 
 class SimpleUserSerializer(serializers.ModelSerializer):
