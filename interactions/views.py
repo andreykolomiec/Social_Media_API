@@ -117,7 +117,8 @@ class FollowViewSet(viewsets.ModelViewSet):
 
     @extend_schema(
         summary="Unfollow a user by their ID",
-        description="Allow an authenticated user to unfollow another user by providing the target user's ID. This action finds and deletes the specific follow relationship.",
+        description="Allow an authenticated user to unfollow another user by providing the target user's ID."
+        " This action finds and deletes the specific follow relationship.",
         parameters=[
             OpenApiParameter(
                 name="pk",
@@ -178,7 +179,8 @@ class LikeViewSet(viewsets.ModelViewSet):
 
     @extend_schema(
         summary="List likes with optional filters",
-        description="Retrieves a list of likes. Can be filtered by `post_id` to show likes for a specific post, or `my_like=true` to show only likes made by the current authenticated user.",
+        description="Retrieves a list of likes. Can be filtered by `post_id` to show likes for a specific post,"
+        " or `my_like=true` to show only likes made by the current authenticated user.",
         parameters=[
             OpenApiParameter(
                 name="post_id",
@@ -245,7 +247,8 @@ class LikeViewSet(viewsets.ModelViewSet):
 
     @extend_schema(
         summary="Create a new like for a post",
-        description="Allows an authenticated user to like a post. A user can only like a post once. The 'user' field is automatically set to the current authenticated user.",
+        description="Allows an authenticated user to like a post. A user can only like a post once."
+        " The 'user' field is automatically set to the current authenticated user.",
         request=LikeSerializer,
         responses={
             201: LikeSerializer,
@@ -298,7 +301,8 @@ class LikeViewSet(viewsets.ModelViewSet):
 
     @extend_schema(
         summary="Unlike a post",
-        description="Allows the user who liked a post to remove their like by providing the like's ID. This operation effectively 'unlikes' the post.",
+        description="Allows the user who liked a post to remove their like by providing the like's ID."
+        " This operation effectively 'unlikes' the post.",
         responses={
             204: {"description": "Like successfully removed."},
             401: {"description": "Authentication credentials were not provided."},
@@ -336,7 +340,8 @@ class CommentViewSet(viewsets.ModelViewSet):
 
     @extend_schema(
         summary="List comments with optional filters",
-        description="Retrieves a list of comments. Can be filtered by `post_id` to show comments for a specific post, or `my_comments=true` to show only comments made by the current authenticated user.",
+        description="Retrieves a list of comments. Can be filtered by `post_id` to show comments for a specific post,"
+        " or `my_comments=true` to show only comments made by the current authenticated user.",
         parameters=[
             OpenApiParameter(
                 name="post_id",
@@ -403,7 +408,8 @@ class CommentViewSet(viewsets.ModelViewSet):
 
     @extend_schema(
         summary="Create a new comment for a post",
-        description="Allows an authenticated user to add comment a post.The 'user' field is automatically set to the current authenticated user.",
+        description="Allows an authenticated user to add comment a post."
+        " The 'user' field is automatically set to the current authenticated user.",
         request=CommentSerializer,
         responses={
             201: CommentSerializer,

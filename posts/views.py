@@ -6,8 +6,6 @@ from rest_framework.permissions import IsAuthenticated
 from posts.models import Post
 from posts.serializers import PostSerializer
 from posts.permissions import IsAuthorOrReadOnly
-from interactions.models import Follow
-from django.contrib.auth.models import User
 
 
 @extend_schema(
@@ -52,7 +50,8 @@ class PostViewSet(viewsets.ModelViewSet):
                 name="following",
                 type=OpenApiTypes.BOOL,
                 location=OpenApiParameter.QUERY,
-                description="If 'true', show posts from users the current authenticated user is following. Requires user to have a 'profile' object.",
+                description="If 'true', show posts from users the current authenticated user is following."
+                " Requires user to have a 'profile' object.",
                 required=False,
                 examples=[
                     OpenApiExample(
