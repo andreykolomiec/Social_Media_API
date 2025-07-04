@@ -4,24 +4,32 @@ from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiExampl
 from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework.authtoken.models import Token
-from rest_framework.authtoken.views import ObtainAuthToken
+from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.permissions import IsAuthenticated, AllowAny
-from django.contrib.auth.models import User
-from .serializers import UserRegistrationSerializer, UserProfileSerializer
+from django.contrib.auth import get_user_model
 from .models import UserProfile
 from rest_framework import viewsets
 from django.shortcuts import get_object_or_404
 from users.permissions import IsOwnerOrReadOnly
+from rest_framework_simplejwt.views import TokenObtainPairView as JWTTokenObtainPairView
+from users.serializers import (
+    UserRegistrationSerializer,
+    UserProfileSerializer,
+    CustomTokenObtainPairSerializer,
+    UserUpdateSerializer,
+)
 
 
-class UserRegistrationView(generics.CreateAPIView):
+User = get_user_model()
+
+
+class CreateUserView(generics.CreateAPIView):
     """
-    API View for registering a new user.
-    Allows any user (AllowAny) to register.
+    API View for user registration (creating a new user).
+    Allows any user to register with email and password.
+    Returns JWT tokens upon successful registration.
     """
 
-    queryset = User.objects.all()
     serializer_class = UserRegistrationSerializer
     permission_classes = (AllowAny,)
 
@@ -29,53 +37,103 @@ class UserRegistrationView(generics.CreateAPIView):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
-        token, created = Token.objects.get_or_create(user=user)
+        refresh = RefreshToken.for_user(user)
+
         return Response(
             {
                 "message": "The user has been successfully registered.",
                 "user_id": user.id,
-                "username": user.username,
                 "email": user.email,
-                "token": token.key,
+                "access_token": str(refresh.access_token),
+                "refresh_token": str(refresh),
             },
             status=status.HTTP_201_CREATED,
         )
 
 
-class LoginView(ObtainAuthToken):
+class LoginUserView(JWTTokenObtainPairView):
     """
-    API View for user login and obtaining an authentication token.
+    API View for user login and obtaining JWT authentication tokens.
+    Uses email and password for authentication.
     """
 
+    serializer_class = CustomTokenObtainPairSerializer
     permission_classes = (AllowAny,)
-
-    def post(self, request, *args, **kwargs):
-        serializer = self.serializer_class(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        user = serializer.validated_data["user"]
-        token, created = Token.objects.get_or_create(user=user)
-        return Response(
-            {"token": token.key, "user_id": user.id, "username": user.username},
-            status=status.HTTP_200_OK,
-        )
 
 
 class LogoutView(APIView):
     """
-    Requires authentication. Deletes the authentication token.
+    Requires authentication. Blacklists the refresh token (if provided)
+    to invalidate it.
     """
 
     permission_classes = (IsAuthenticated,)
 
     def post(self, request):
         try:
-            request.user.auth_token.delete()
+            refresh_token = request.data.get("refresh_token")
+            if refresh_token:
+                token = RefreshToken(refresh_token)
+                token.blacklist()
             return Response(status=status.HTTP_204_NO_CONTENT)
         except Exception as e:
             return Response(
-                {"detail": f"Error during logout {e}"},
+                {
+                    "detail": f"Error during logout {e}. Ensure a valid refresh_token is provided."
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+
+class ManageUserView(generics.RetrieveUpdateAPIView):
+    """
+    API View for an authenticated user to retrieve and update their own User model details.
+    This manages fields like email, password, first_name, last_name, etc.
+    """
+
+    serializer_class = UserUpdateSerializer
+    permission_classes = (IsAuthenticated,)
+
+    def get_object(self):
+        """Retrieve and return the authenticated user's User model object."""
+        return self.request.user
+
+    @extend_schema(
+        description="Retrieve or update the authenticated user's details.",
+        summary="Manage current user (retrieve/update)",
+        tags=["User Management"],
+        request=UserUpdateSerializer,
+        responses={
+            200: UserRegistrationSerializer,
+            401: {"description": "Unauthorized"},
+        },
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+
+    @extend_schema(
+        summary="Update current user's details",
+        request=UserRegistrationSerializer,
+        responses={
+            200: UserRegistrationSerializer,
+            400: {"description": "Bad Request"},
+            401: {"description": "Unauthorized"},
+        },
+    )
+    def put(self, request, *args, **kwargs):
+        return super().put(request, *args, **kwargs)
+
+    @extend_schema(
+        summary="Update current user's details",
+        request=UserUpdateSerializer(partial=True),
+        responses={
+            200: UserUpdateSerializer,
+            400: {"description": "Bad Request"},
+            401: {"description": "Unauthorized"},
+        },
+    )
+    def patch(self, request, *args, **kwargs):
+        return super().patch(request, *args, **kwargs)
 
 
 @extend_schema(
@@ -125,24 +183,6 @@ class UserProfileViewSet(viewsets.ModelViewSet):
 
         self.check_object_permissions(self.request, obj)
         return obj
-
-        # filter_kwargs = {self.lookup_field: self.kwargs[lookup_url_kwarg]}
-        # obj = get_object_or_404(self.queryset, **filter_kwargs)
-        # self.check_object_permissions(self.request, obj)
-        # return obj
-
-    def destroy(self, request, *args, **kwargs):
-        """
-        We prohibit the deletion of profiles via the API.
-        Deleting a user must be a separate administrative function,
-        or through deactivation, not deletion of the profile.
-        """
-        return Response(
-            {
-                "detail": "Deletion of user profiles is not allowed via this API endpoint."
-            },
-            status=status.HTTP_405_METHOD_NOT_ALLOWED,
-        )
 
     @extend_schema(
         description="Retrieve a single user profile by ID or username.",
