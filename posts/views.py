@@ -1,8 +1,10 @@
 from django.db.models import Count
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiExample
-from rest_framework import viewsets
+from rest_framework import viewsets, status
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+
 from posts.models import Post
 from posts.serializers import PostSerializer
 from posts.permissions import IsAuthorOrReadOnly
@@ -113,16 +115,30 @@ class PostViewSet(viewsets.ModelViewSet):
 
     @extend_schema(
         summary="Create a new post",
-        description="Allows an authenticated user to create a new post.",
+        description="Allows an authenticated user to create a new post."
+        " Can include 'scheduled_at' for future publication.",
         request=PostSerializer,
         responses={
-            200: PostSerializer,
+            201: PostSerializer,
+            202: {"description": "Post scheduled successfully."},
             400: {"description": "Invalid data provided."},
             401: {"description": "Authentication credentials were not provided."},
         },
     )
     def create(self, request, *args, **kwargs):
-        return super().create(request, *args, **kwargs)
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        result = serializer.save(author=self.request.user)
+
+        if isinstance(result, dict) and result.get("status") == "scheduled":
+            return Response(
+                {"detail": result["detail"]}, status=status.HTTP_202_ACCEPTED
+            )
+        else:
+            headers = self.get_success_headers(serializer.data)
+            return Response(
+                serializer.data, status=status.HTTP_201_CREATED, headers=headers
+            )
 
     @extend_schema(
         summary="Retrieve a post",
