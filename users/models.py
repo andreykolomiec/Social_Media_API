@@ -1,3 +1,4 @@
+from django.contrib.auth.base_user import BaseUserManager
 from django.db import models
 from django.contrib.auth.models import AbstractUser
 from django.db.models.signals import post_save
@@ -5,8 +6,31 @@ from django.dispatch import receiver
 from django.utils.translation import gettext_lazy as _
 
 
-class User(AbstractUser):
+class CustomUserManager(BaseUserManager):
+    use_in_migrations = True
 
+    def create_user(self, email, password=None, **extra_fields):
+        if not email:
+            raise ValueError("Email must be set")
+        email = self.normalize_email(email)
+        user = self.model(email=email, **extra_fields)
+        user.set_password(password)
+        user.save(using=self._db)
+        return user
+
+    def create_superuser(self, email, password=None, **extra_fields):
+        extra_fields.setdefault("is_staff", True)
+        extra_fields.setdefault("is_superuser", True)
+
+        if extra_fields.get("is_staff") is not True:
+            raise ValueError("Superuser must have is_staff=True.")
+        if extra_fields.get("is_superuser") is not True:
+            raise ValueError("Superuser must have is_superuser=True.")
+
+        return self.create_user(email, password, **extra_fields)
+
+
+class User(AbstractUser):
     email = models.EmailField(_("email address"), unique=True)
 
     USERNAME_FIELD = "email"
@@ -15,7 +39,8 @@ class User(AbstractUser):
     class Meta:
         verbose_name = _("user")
         verbose_name_plural = _("users")
-        db_table = "auth_user"
+
+    objects = CustomUserManager()
 
 
 class UserProfile(models.Model):
@@ -39,13 +64,14 @@ class UserProfile(models.Model):
     def __str__(self):
         return f"{self.user.username} Profile"
 
-    @receiver(post_save, sender=User)
-    def create_or_user_profile(sender, instance, created, **kwargs):
-        """
-        Signal that automatically creates or updates UserProfile
-        when the User object is saved.
-        """
-        if created:
-            UserProfile.objects.create(user=instance)
 
-        instance.profile.save()
+@receiver(post_save, sender=User)
+def create_or_update_user_profile(sender, instance, created, **kwargs):
+    """
+    Signal to create or update UserProfile whenever User is saved.
+    """
+    if created:
+        UserProfile.objects.create(user=instance)
+    else:
+        if hasattr(instance, "profile"):
+            instance.profile.save()
