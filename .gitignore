@@ -1,0 +1,47 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Virtual environment
+venv/
+ENV/
+env/
+.venv/
+
+# Django migrations (ignore only bytecode, not .py files)
+**/migrations/__pycache__/
+**/migrations/*.py[cod]
+
+!**/migrations/*.py
+
+# Database
+db.sqlite3
+*.sqlite3
+data
+
+# Media & Static files
+/media/
+staticfiles/
+*.log
+
+# Local env files
+.env
+*.env
+
+# PyCharm project files
+.idea/
+
+# VS Code settings
+.vscode/
+
+# macOS / Windows system files
+.DS_Store
+Thumbs.db
+
+# Docker
+Dockerfile
+docker-compose.yml
