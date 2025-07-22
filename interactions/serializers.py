@@ -41,11 +41,6 @@ class FollowSerializer(serializers.ModelSerializer):
         current_follower = request.user
         target_following = data.get("following")
 
-        if target_following != current_follower:
-            raise serializers.ValidationError(
-                {"following": "User to follow must be provided."}
-            )
-
         if current_follower == target_following:
             raise serializers.ValidationError("You cannot follow yourself.")
 
